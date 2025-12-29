@@ -1,15 +1,19 @@
-import axios from 'axios'
-
-export const uploadToCloudinary = async (base64Image) => {
+export const uploadToCloudinary = async (file) => {
   try {
-    const response = await axios.post('/api/cloudinary', {
-      image: base64Image
-    })
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('upload_preset', 'ecommerce_uploads')
     
-    if (response.data.success) {
-      return response.data.url
-    }
-    throw new Error('Upload failed')
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    )
+    
+    const data = await response.json()
+    return data.secure_url
   } catch (error) {
     console.error('Cloudinary upload error:', error)
     throw error
