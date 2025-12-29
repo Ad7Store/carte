@@ -1,11 +1,8 @@
-import { createContext, useState, useContext, useEffect } from 'react'
+import { createContext, useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import Cookies from 'js-cookie'
-import jwt from 'jsonwebtoken'
 
-const AuthContext = createContext({})
-
-export const useAuth = () => useContext(AuthContext)
+const AuthContext = createContext(undefined)
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
@@ -13,49 +10,56 @@ export const AuthProvider = ({ children }) => {
   const router = useRouter()
 
   useEffect(() => {
-    checkUser()
+    // Check for existing auth token on mount
+    const token = Cookies.get('auth-token')
+    if (token) {
+      try {
+        // Parse JWT token (without verification for client-side)
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        setUser(payload)
+      } catch (error) {
+        console.error('Invalid token:', error)
+        Cookies.remove('auth-token')
+      }
+    }
+    setLoading(false)
   }, [])
 
-  const checkUser = () => {
-    try {
-      const token = Cookies.get('auth-token')
-      if (token) {
-        const decoded = jwt.decode(token)
-        setUser(decoded)
-      }
-    } catch (error) {
-      console.error('Auth error:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         setUser(data.user)
-        return { success: true, redirect: data.redirect }
+        
+        // Set cookie with token
+        if (data.token) {
+          Cookies.set('auth-token', data.token, { expires: 7 })
+        }
+        
+        return { success: true, redirect: data.redirect || '/' }
+      } else {
+        return { success: false, message: data.message || 'Login failed' }
       }
-      
-      return { success: false, message: 'Invalid credentials' }
     } catch (error) {
-      return { success: false, message: 'Login failed' }
+      console.error('Login error:', error)
+      return { success: false, message: 'Network error' }
     }
-  }
+  }, [])
 
-  const logout = () => {
+  const logout = useCallback(() => {
     Cookies.remove('auth-token')
     setUser(null)
-    router.push('/')
-  }
+    router.push('/login')
+  }, [router])
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout }}>
@@ -63,3 +67,5 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   )
 }
+
+export { AuthContext }
