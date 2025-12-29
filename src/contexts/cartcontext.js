@@ -1,20 +1,19 @@
-import { createContext, useState, useContext, useEffect } from 'react'
+import { createContext, useState, useEffect, useCallback } from 'react'
 
-const CartContext = createContext({})
-
-export const useCart = () => useContext(CartContext)
+const CartContext = createContext(undefined)
 
 export const CartProvider = ({ children }) => {
   const [cart, setCart] = useState([])
 
-  // Load cart from localStorage on initial render
+  // Load cart from localStorage on mount
   useEffect(() => {
     const savedCart = localStorage.getItem('cart')
     if (savedCart) {
       try {
         setCart(JSON.parse(savedCart))
       } catch (error) {
-        console.error('Error parsing cart from localStorage:', error)
+        console.error('Error parsing cart:', error)
+        localStorage.removeItem('cart')
       }
     }
   }, [])
@@ -24,51 +23,56 @@ export const CartProvider = ({ children }) => {
     localStorage.setItem('cart', JSON.stringify(cart))
   }, [cart])
 
-  const addToCart = (product) => {
-    setCart(prevCart => {
-      const existingItem = prevCart.find(item => item.id === product.id)
+  const addToCart = useCallback((product) => {
+    setCart((prevCart) => {
+      const existingItemIndex = prevCart.findIndex(item => item.id === product.id)
       
-      if (existingItem) {
-        return prevCart.map(item =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        )
+      if (existingItemIndex > -1) {
+        // Update quantity if item exists
+        const updatedCart = [...prevCart]
+        updatedCart[existingItemIndex] = {
+          ...updatedCart[existingItemIndex],
+          quantity: updatedCart[existingItemIndex].quantity + 1
+        }
+        return updatedCart
+      } else {
+        // Add new item
+        return [...prevCart, { ...product, quantity: 1 }]
       }
-      
-      return [...prevCart, { ...product, quantity: 1 }]
     })
-  }
+  }, [])
 
-  const removeFromCart = (productId) => {
-    setCart(prevCart => prevCart.filter(item => item.id !== productId))
-  }
+  const removeFromCart = useCallback((productId) => {
+    setCart((prevCart) => prevCart.filter(item => item.id !== productId))
+  }, [])
 
-  const updateQuantity = (productId, quantity) => {
+  const updateQuantity = useCallback((productId, quantity) => {
     if (quantity < 1) {
       removeFromCart(productId)
       return
     }
     
-    setCart(prevCart =>
+    setCart((prevCart) =>
       prevCart.map(item =>
-        item.id === productId
-          ? { ...item, quantity }
-          : item
+        item.id === productId ? { ...item, quantity } : item
       )
     )
-  }
+  }, [removeFromCart])
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     setCart([])
-  }
+  }, [])
 
-  const getCartTotal = () => {
+  const getCartTotal = useCallback(() => {
     return cart.reduce((total, item) => {
       const price = item.offPrice || item.price
-      return total + (price * item.quantity)
+      return total + (parseFloat(price) * item.quantity)
     }, 0)
-  }
+  }, [cart])
+
+  const getCartCount = useCallback(() => {
+    return cart.reduce((count, item) => count + item.quantity, 0)
+  }, [cart])
 
   return (
     <CartContext.Provider value={{
@@ -77,9 +81,12 @@ export const CartProvider = ({ children }) => {
       removeFromCart,
       updateQuantity,
       clearCart,
-      getCartTotal
+      getCartTotal,
+      getCartCount
     }}>
       {children}
     </CartContext.Provider>
   )
 }
+
+export { CartContext }
